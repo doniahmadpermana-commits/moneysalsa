@@ -1,5 +1,5 @@
 // Naikkan versi ini setiap kali file aplikasi diubah supaya HP mengambil versi baru.
-const CACHE = 'moneysalsa-v3';
+const CACHE = 'moneysalsa-v4';
 const ASSETS = [
   './', 'index.html', 'manifest.webmanifest', 'firebase-config.js',
   'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
@@ -7,7 +7,8 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: 'reload' supaya tidak mengambil salinan lama dari cache HTTP browser.
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -28,6 +29,15 @@ self.addEventListener('fetch', e => {
       fetch(req)
         .then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put('index.html', copy)); return res; })
         .catch(() => caches.match('index.html'))
+    );
+    return;
+  }
+  // Konfigurasi Firebase: network-first juga, supaya perubahan config langsung terpakai.
+  if (new URL(req.url).pathname.endsWith('/firebase-config.js')) {
+    e.respondWith(
+      fetch(req.url, { cache: 'no-cache' })
+        .then(res => { if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); } return res; })
+        .catch(() => caches.match(req, { ignoreSearch: true }))
     );
     return;
   }

@@ -108,11 +108,12 @@ header.top {
 .tx .amt { font-weight: 700; font-size: 15px; white-space: nowrap; }
 .amt.in { color: var(--in); }
 .amt.out { color: var(--out); }
+.amt.tr { color: var(--muted); }
 .empty { text-align: center; color: var(--muted); padding: 28px 12px; }
 .empty .big { font-size: 38px; }
 
 .search { width: 100%; border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 10px 12px; }
-.chips-filter { display: flex; gap: 6px; margin-top: 8px; }
+.chips-filter { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .chips-filter button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 12px; font-size: 14px; }
 .chips-filter button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
@@ -164,6 +165,23 @@ nav.tabs .add {
 .seg button { border: 0; background: none; padding: 9px; border-radius: 9px; font-weight: 600; color: var(--muted); }
 .seg button.on.out { background: var(--out); color: #fff; }
 .seg button.on.in { background: var(--in); color: #fff; }
+.seg.three { grid-template-columns: 1fr 1fr 1fr; }
+.seg button.on.tr { background: var(--accent); color: #fff; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips button {
+  border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 8px 12px; font-size: 14px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chips button.on { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.chips .note a, .note a { color: var(--accent); font-weight: 600; }
+.emojis { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.emojis button { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 6px 0; font-size: 20px; }
+.emojis button.on { border-color: var(--accent); background: var(--accent-soft); }
+.sheet h3 { margin: 4px 0 0; font-size: 17px; }
+.overlay.top { z-index: 22; }
+.sheet.top { z-index: 23; }
+.set-btn .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wallet-total { display: flex; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 14px; }
 .amount-in {
   display: flex; align-items: baseline; gap: 6px; border-bottom: 2px solid var(--line); margin: 16px 0 6px; padding-bottom: 4px;
 }
@@ -249,6 +267,9 @@ nav.tabs .add {
       <div class="row muted"><span id="budgetUsed"></span><span id="budgetLeft"></span></div>
     </div>
 
+    <div class="section-title"><h2>Dompet</h2><a href="#" data-go="settings">Atur</a></div>
+    <div id="wallets"></div>
+
     <div class="section-title"><h2>Transaksi terakhir</h2><a href="#" data-go="list">Lihat semua</a></div>
     <div id="recent"></div>
   </section>
@@ -256,12 +277,14 @@ nav.tabs .add {
   <!-- RIWAYAT -->
   <section id="view-list" class="hidden">
     <div style="margin-top:8px">
-      <input class="search" id="q" type="search" placeholder="Cari catatan atau kategori…">
+      <input class="search" id="q" type="search" placeholder="Cari catatan, kategori, atau dompet…">
       <div class="chips-filter" id="typeFilter">
         <button data-f="all" class="on">Semua</button>
         <button data-f="out">Pengeluaran</button>
         <button data-f="in">Pemasukan</button>
+        <button data-f="tr">Transfer</button>
       </div>
+      <select class="search hidden" id="wFilter" style="margin-top:8px" aria-label="Filter dompet"></select>
     </div>
     <div id="fullList"></div>
   </section>
@@ -289,6 +312,21 @@ nav.tabs .add {
       <p class="note" style="margin:4px 0 10px">Kosongkan / isi 0 kalau tidak mau pakai budget.</p>
       <div class="amount-in" style="margin-top:0"><span>Rp</span><input id="budgetInput" inputmode="numeric" placeholder="0"></div>
       <button class="btn primary" id="saveBudget" style="width:100%;margin-top:10px">Simpan budget</button>
+    </div>
+
+    <div class="card">
+      <b>Dompet</b>
+      <p class="note" style="margin:4px 0 6px">Rekening bank, e-wallet, atau uang tunai. Saldo = saldo awal + semua pemasukan − pengeluaran ± transfer.</p>
+      <div id="setWallets"></div>
+      <button class="set-btn" data-new-wallet><span class="ic">＋</span><span>Tambah dompet</span></button>
+    </div>
+
+    <div class="card">
+      <b>Kategori sendiri</b>
+      <p class="note" style="margin:4px 0 6px">Tambahan di luar kategori bawaan. Ketuk untuk ubah atau hapus.</p>
+      <div id="setCats"></div>
+      <button class="set-btn" data-new-cat="out"><span class="ic">＋</span><span>Kategori pengeluaran</span></button>
+      <button class="set-btn" data-new-cat="in"><span class="ic">＋</span><span>Kategori pemasukan</span></button>
     </div>
 
     <div class="card hidden" id="accountCard">
@@ -335,13 +373,26 @@ nav.tabs .add {
 <div class="overlay" id="overlay"></div>
 <form class="sheet" id="sheet" autocomplete="off">
   <div class="grab"></div>
-  <div class="seg" id="typeSeg">
+  <div class="seg three" id="typeSeg">
     <button type="button" data-t="out" class="out">Pengeluaran</button>
     <button type="button" data-t="in" class="in">Pemasukan</button>
+    <button type="button" data-t="tr" class="tr">Transfer</button>
   </div>
   <div class="amount-in"><span>Rp</span><input id="fAmount" inputmode="numeric" placeholder="0" required></div>
-  <label class="lbl">Kategori</label>
-  <div class="cats" id="fCats"></div>
+  <div id="fCatBox">
+    <label class="lbl">Kategori</label>
+    <div class="cats" id="fCats"></div>
+  </div>
+  <div id="fWalletBox">
+    <label class="lbl" id="fWalletLbl">Dompet</label>
+    <div class="chips" id="fWallets"></div>
+  </div>
+  <div id="fTrBox" class="hidden">
+    <label class="lbl">Dari dompet</label>
+    <div class="chips" id="fFrom"></div>
+    <label class="lbl">Ke dompet</label>
+    <div class="chips" id="fTo"></div>
+  </div>
   <label class="lbl" for="fDate">Tanggal</label>
   <input class="field" type="date" id="fDate" required>
   <label class="lbl" for="fNote">Catatan (opsional)</label>
@@ -349,6 +400,25 @@ nav.tabs .add {
   <div class="actions">
     <button type="button" class="btn del hidden" id="fDelete">Hapus</button>
     <button type="button" class="btn ghost" id="fCancel">Batal</button>
+    <button type="submit" class="btn primary">Simpan</button>
+  </div>
+</form>
+
+<div class="overlay top" id="overlay2"></div>
+<form class="sheet top" id="editor" autocomplete="off">
+  <div class="grab"></div>
+  <h3 id="eTitle"></h3>
+  <label class="lbl" for="eName">Nama</label>
+  <input class="field" id="eName" maxlength="30" required>
+  <label class="lbl">Ikon</label>
+  <div class="emojis" id="eIcons"></div>
+  <div id="eInitBox">
+    <label class="lbl" for="eInit">Saldo awal (saldo saat mulai dicatat)</label>
+    <div class="amount-in" style="margin-top:0"><span>Rp</span><input id="eInit" inputmode="numeric" placeholder="0"></div>
+  </div>
+  <div class="actions">
+    <button type="button" class="btn del hidden" id="eDelete">Hapus</button>
+    <button type="button" class="btn ghost" id="eCancel">Batal</button>
     <button type="submit" class="btn primary">Simpan</button>
   </div>
 </form>
@@ -385,15 +455,37 @@ nav.tabs .add {
       ['tabungan', '🐷', 'Tabungan'], ['investasi', '📈', 'Investasi'], ['refund', '↩️', 'Refund'], ['lain_in', '💰', 'Lainnya'],
     ],
   };
-  const catInfo = (type, id) => (CATS[type] || []).find(c => c[0] === id) || ['lainnya', '📦', 'Lainnya'];
+  const CAT_ICONS = ['🍜','🍔','☕','🧋','🛒','🛍️','👗','👟','💄','💊','🏥','🏋️','🎬','🎮','🎵','📚',
+    '✏️','🎓','🐱','👶','🚗','🛵','⛽','🅿️','✈️','🏖️','🏠','💡','💧','📶','🧾','💳',
+    '🎁','💝','🙏','🤝','💼','✨','🏪','💌','🐷','📈','💰','↩️','🪙','🎉','🔧','📦'];
+  const WALLET_ICONS = ['💵','👛','🏦','💳','📱','🟦','🟩','🟧','🟪','🟥','🟨','⬛','🐷','💰','🪙','🏧'];
+  const fallbackCat = type => type === 'in' ? 'lain_in' : 'lainnya';
+  // Kategori bawaan + kategori buatan sendiri (db.cats), format [id, ikon, nama].
+  const catList = type => (CATS[type] || []).concat(
+    db.cats.filter(c => c.type === type).sort((a, b) => (a.created || 0) - (b.created || 0)).map(c => [c.id, c.icon, c.name]));
+  const catInfo = (type, id) => type === 'tr' ? ['transfer', '🔁', 'Transfer']
+    : catList(type).find(c => c[0] === id) || (CATS[type] || CATS.out).find(c => c[0] === fallbackCat(type));
+  const walletList = () => db.wallets.slice().sort((a, b) => (a.created || 0) - (b.created || 0));
+  const walletInfo = id => !id ? null : db.wallets.find(w => w.id === id) || { id, icon: '❔', name: 'Dompet terhapus' };
+  // Saldo semua dompet: saldo awal + pemasukan − pengeluaran − transfer keluar + transfer masuk.
+  function balances() {
+    const b = {};
+    db.wallets.forEach(w => b[w.id] = w.initial || 0);
+    db.tx.forEach(t => {
+      if (t.type === 'in' && t.wallet in b) b[t.wallet] += t.amount;
+      if (t.type === 'out' && t.wallet in b) b[t.wallet] -= t.amount;
+      if (t.type === 'tr') { if (t.wallet in b) b[t.wallet] -= t.amount; if (t.to in b) b[t.to] += t.amount; }
+    });
+    return b;
+  }
 
   // ---------- storage ----------
   function load() {
     try {
       const d = JSON.parse(localStorage.getItem(KEY));
-      if (d && Array.isArray(d.tx)) return { tx: d.tx, budget: d.budget || 0, lastBackup: d.lastBackup || null };
+      if (d && Array.isArray(d.tx)) return { tx: d.tx, wallets: d.wallets || [], cats: d.cats || [], budget: d.budget || 0, lastBackup: d.lastBackup || null };
     } catch (e) {}
-    return { tx: [], budget: 0, lastBackup: null };
+    return { tx: [], wallets: [], cats: [], budget: 0, lastBackup: null };
   }
   let db = load();
   function save() {
@@ -404,42 +496,49 @@ nav.tabs .add {
 
   // ---------- sync (Firebase) ----------
   // Tanpa konfigurasi Firebase, semua data tinggal di localStorage HP ini.
-  // Dengan konfigurasi, data ada di Firestore users/{uid}/tx/{id} + users/{uid}.budget,
+  // Dengan konfigurasi, data ada di Firestore users/{uid}/{tx|wallets|cats}/{id} + users/{uid}.budget,
   // dan Firestore sendiri yang menyimpan cache offline + antrean tulis.
   const CFG = window.FIREBASE_CONFIG;
   const CLOUD = !!(CFG && CFG.apiKey && CFG.projectId);
   let fb = null; // { auth, fs, user, m: modul-modul firebase }
 
-  const txRef = id => fb.m.fs.doc(fb.fs, 'users', fb.user.uid, 'tx', id);
+  const COLS = {
+    tx: ['id','type','cat','amount','date','note','wallet','to','created','updated'],
+    wallets: ['id','name','icon','initial','created','updated'],
+    cats: ['id','type','name','icon','created','updated'],
+  };
+  const docRef = (col, id) => fb.m.fs.doc(fb.fs, 'users', fb.user.uid, col, id);
   const userRef = () => fb.m.fs.doc(fb.fs, 'users', fb.user.uid);
   const cloudErr = e => { console.error(e); toast('Gagal sinkron: ' + (e.code || e.message)); };
-  const clean = t => { const o = {}; for (const k of ['id','type','cat','amount','date','note','created','updated']) if (t[k] !== undefined) o[k] = t[k]; return o; };
+  const clean = (col, t) => { const o = {}; for (const k of COLS[col]) if (t[k] !== undefined && t[k] !== null) o[k] = t[k]; return o; };
 
   // Semua perubahan data lewat fungsi-fungsi ini.
   // Mode cloud: tulis ke Firestore tanpa ditunggu (offline tetap jalan), layar
   // diperbarui oleh listener onSnapshot. Mode lokal: ubah db + simpan.
-  function putTx(t) {
-    if (fb) return void fb.m.fs.setDoc(txRef(t.id), clean(t)).catch(cloudErr);
-    const i = db.tx.findIndex(x => x.id === t.id);
-    if (i >= 0) db.tx[i] = t; else db.tx.push(t);
+  function putDoc(col, t) {
+    if (fb) return void fb.m.fs.setDoc(docRef(col, t.id), clean(col, t)).catch(cloudErr);
+    t = clean(col, t);
+    const i = db[col].findIndex(x => x.id === t.id);
+    if (i >= 0) db[col][i] = t; else db[col].push(t);
     save(); render();
   }
-  function removeTx(id) {
-    if (fb) return void fb.m.fs.deleteDoc(txRef(id)).catch(cloudErr);
-    db.tx = db.tx.filter(t => t.id !== id); save(); render();
+  function removeDoc(col, id) {
+    if (fb) return void fb.m.fs.deleteDoc(docRef(col, id)).catch(cloudErr);
+    db[col] = db[col].filter(t => t.id !== id); save(); render();
   }
+  const putTx = t => putDoc('tx', t);
   function setBudget(n) {
     if (fb) return void fb.m.fs.setDoc(userRef(), { budget: n }, { merge: true }).catch(cloudErr);
     db.budget = n; save(); render();
   }
-  // Ganti seluruh daftar transaksi (dipakai untuk restore & hapus semua).
-  async function replaceAll(next) {
-    if (!fb) { db.tx = next; save(); render(); return; }
+  // Ganti seluruh isi satu koleksi (dipakai untuk restore & hapus semua).
+  async function replaceAll(col, next) {
+    if (!fb) { db[col] = next.map(t => clean(col, t)); save(); render(); return; }
     const keep = new Set(next.map(t => t.id));
-    const cur = new Map(db.tx.map(t => [t.id, t]));
-    const ops = db.tx.filter(t => !keep.has(t.id)).map(t => b => b.delete(txRef(t.id)))
-      .concat(next.filter(t => JSON.stringify(clean(t)) !== JSON.stringify(clean(cur.get(t.id) || {})))
-        .map(t => b => b.set(txRef(t.id), clean(t))));
+    const cur = new Map(db[col].map(t => [t.id, t]));
+    const ops = db[col].filter(t => !keep.has(t.id)).map(t => b => b.delete(docRef(col, t.id)))
+      .concat(next.filter(t => JSON.stringify(clean(col, t)) !== JSON.stringify(clean(col, cur.get(t.id) || {})))
+        .map(t => b => b.set(docRef(col, t.id), clean(col, t))));
     for (let i = 0; i < ops.length; i += 400) {
       const b = fb.m.fs.writeBatch(fb.fs);
       ops.slice(i, i + 400).forEach(op => op(b));
@@ -454,7 +553,7 @@ nav.tabs .add {
 
   async function startCloud() {
     $('#splash').classList.remove('hidden');
-    db.tx = []; db.budget = 0; render();
+    db.tx = []; db.wallets = []; db.cats = []; db.budget = 0; render();
     let m;
     try {
       const [app, auth, fs] = await Promise.all([
@@ -481,7 +580,7 @@ nav.tabs .add {
       unsubs.forEach(u => u()); unsubs = [];
       $('#splash').classList.add('hidden');
       if (!user) {
-        fb = null; db.tx = []; db.budget = 0; setSync('');
+        fb = null; db.tx = []; db.wallets = []; db.cats = []; db.budget = 0; setSync('');
         $('#login').classList.remove('hidden');
         render();
         return;
@@ -491,17 +590,21 @@ nav.tabs .add {
       $('#accEmail').textContent = user.email || '';
       // Data yang dicatat sebelum sinkron diaktifkan ikut diunggah sekali.
       const local = load();
-      if (local.tx.length) {
-        local.tx.forEach(putTx);
+      if (local.tx.length || local.wallets.length || local.cats.length) {
+        Object.keys(COLS).forEach(col => local[col].forEach(t => putDoc(col, t)));
         if (local.budget) setBudget(local.budget);
-        try { localStorage.setItem(KEY, JSON.stringify({ tx: [], budget: 0, lastBackup: local.lastBackup })); } catch (e) {}
+        try { localStorage.setItem(KEY, JSON.stringify({ tx: [], wallets: [], cats: [], budget: 0, lastBackup: local.lastBackup })); } catch (e) {}
       }
-      db.tx = []; db.budget = 0;
+      db.tx = []; db.wallets = []; db.cats = []; db.budget = 0;
       unsubs.push(m.fs.onSnapshot(m.fs.collection(fs, 'users', user.uid, 'tx'), { includeMetadataChanges: true }, snap => {
         db.tx = snap.docs.map(d => d.data());
         setSync(snap.metadata.hasPendingWrites ? '⏳ menyinkronkan…' : snap.metadata.fromCache ? '📴 offline' : '');
         render();
       }, cloudErr));
+      ['wallets', 'cats'].forEach(col => unsubs.push(m.fs.onSnapshot(m.fs.collection(fs, 'users', user.uid, col), snap => {
+        db[col] = snap.docs.map(d => d.data());
+        render();
+      }, cloudErr)));
       unsubs.push(m.fs.onSnapshot(userRef(), snap => {
         db.budget = (snap.exists() && snap.data().budget) || 0;
         render();
@@ -572,19 +675,36 @@ nav.tabs .add {
   let cur = { y: now.getFullYear(), m: now.getMonth() }; // m: 0-11
   let tab = 'home';
   let filter = 'all';
+  let wFilter = '';
   const monthKey = () => `${cur.y}-${pad(cur.m + 1)}`;
   const monthTx = () => db.tx.filter(t => t.date.startsWith(monthKey()));
   const sortTx = arr => arr.slice().sort((a, b) => b.date.localeCompare(a.date) || (b.created || 0) - (a.created || 0));
   const sum = (arr, type) => arr.filter(t => t.type === type).reduce((s, t) => s + t.amount, 0);
 
   // ---------- render ----------
+  const wName = id => { const w = walletInfo(id); return w ? `${w.icon} ${w.name}` : '?'; };
   function txRow(t) {
     const c = catInfo(t.type, t.cat);
+    const w = walletInfo(t.wallet);
+    const sub = (t.type === 'tr' ? [`${wName(t.wallet)} → ${wName(t.to)}`, t.note] : [w && `${w.icon} ${w.name}`, t.note])
+      .filter(Boolean).map(esc).join(' · ');
     return `<button class="tx" data-id="${t.id}">
       <span class="ic">${c[1]}</span>
-      <span class="mid"><b>${esc(c[2])}</b><small>${t.note ? esc(t.note) : '&nbsp;'}</small></span>
-      <span class="amt ${t.type}">${signed(t.amount, t.type)}</span>
+      <span class="mid"><b>${esc(c[2])}</b><small>${sub || '&nbsp;'}</small></span>
+      <span class="amt ${t.type}">${t.type === 'tr' ? fmt(t.amount) : signed(t.amount, t.type)}</span>
     </button>`;
+  }
+  const money = n => (n < 0 ? '−' : '') + fmt(n);
+  function walletsBlock() {
+    const ws = walletList();
+    if (!ws.length) return `<div class="card note" style="margin-top:0">Catat uang di rekening bank, e-wallet, atau cash biar saldo tiap dompet kelihatan.
+      <a href="#" data-new-wallet>+ Tambah dompet</a></div>`;
+    const b = balances();
+    const total = ws.reduce((s, w) => s + b[w.id], 0);
+    return `<div class="tx-list">${ws.map(w => `<button class="tx" data-wallet="${w.id}">
+        <span class="ic">${w.icon}</span><span class="mid"><b>${esc(w.name)}</b></span>
+        <span class="amt ${b[w.id] < 0 ? 'out' : ''}">${money(b[w.id])}</span></button>`).join('')}
+      <div class="wallet-total"><span class="muted">Total semua dompet</span><b>${money(total)}</b></div></div>`;
   }
   function groupedList(arr) {
     if (!arr.length) return `<div class="empty"><div class="big">🌶️</div>Belum ada transaksi.<br>Tekan <b>+</b> untuk mencatat.</div>`;
@@ -599,6 +719,7 @@ nav.tabs .add {
   }
 
   function render() {
+    if ($('#sheet').classList.contains('show')) drawSheet();
     $('#monthLabel').textContent = `${MONTHS[cur.m].slice(0, 3)} ${cur.y}`;
     const mt = sortTx(monthTx());
     const tin = sum(mt, 'in'), tout = sum(mt, 'out');
@@ -617,13 +738,22 @@ nav.tabs .add {
         $('#budgetUsed').textContent = `Terpakai ${fmt(tout)} dari ${fmt(db.budget)}`;
         $('#budgetLeft').textContent = pct > 100 ? `Lebih ${fmt(tout - db.budget)}` : `Sisa ${fmt(db.budget - tout)}`;
       } else bc.classList.add('hidden');
+      $('#wallets').innerHTML = walletsBlock();
       $('#recent').innerHTML = groupedList(mt.slice(0, 8));
     }
 
     if (tab === 'list') {
+      const ws = walletList();
+      if (wFilter && !ws.some(w => w.id === wFilter)) wFilter = '';
+      $('#wFilter').classList.toggle('hidden', !ws.length);
+      $('#wFilter').innerHTML = `<option value="">Semua dompet</option>` +
+        ws.map(w => `<option value="${w.id}">${w.icon} ${esc(w.name)}</option>`).join('');
+      $('#wFilter').value = wFilter;
       const q = $('#q').value.trim().toLowerCase();
       const arr = mt.filter(t => (filter === 'all' || t.type === filter) &&
-        (!q || (t.note || '').toLowerCase().includes(q) || catInfo(t.type, t.cat)[2].toLowerCase().includes(q)));
+        (!wFilter || t.wallet === wFilter || t.to === wFilter) &&
+        (!q || [t.note || '', catInfo(t.type, t.cat)[2], wName(t.wallet), t.to ? wName(t.to) : '']
+          .some(x => x.toLowerCase().includes(q))));
       $('#fullList').innerHTML = groupedList(arr);
     }
 
@@ -664,6 +794,13 @@ nav.tabs .add {
         $('#backupNote').textContent = 'Data sudah otomatis aman di cloud. Backup file ini hanya untuk jaga-jaga atau arsip.';
       }
       $('#budgetInput').value = db.budget ? db.budget.toLocaleString('id-ID') : '';
+      $('#setWallets').innerHTML = walletList().map(w => `<button class="set-btn" data-edit-wallet="${w.id}">
+        <span class="ic">${w.icon}</span><span class="grow">${esc(w.name)}</span>
+        <span class="muted">awal ${money(w.initial || 0)}</span></button>`).join('');
+      const cats = db.cats.slice().sort((a, b) => a.type.localeCompare(b.type) || (a.created || 0) - (b.created || 0));
+      $('#setCats').innerHTML = cats.map(c => `<button class="set-btn" data-edit-cat="${c.id}">
+        <span class="ic">${c.icon}</span><span class="grow">${esc(c.name)}</span>
+        <span class="muted">${c.type === 'in' ? 'Pemasukan' : 'Pengeluaran'}</span></button>`).join('');
       const lb = lastBackup();
       $('#lastBackup').textContent = lb ? `Backup terakhir di HP ini: ${new Date(lb).toLocaleString('id-ID')}` : 'Belum pernah backup dari HP ini.';
     }
@@ -682,10 +819,21 @@ nav.tabs .add {
     if (go) { e.preventDefault(); showTab(go.dataset.go); }
     const tx = e.target.closest('.tx[data-id]');
     if (tx) openSheet(db.tx.find(t => t.id === tx.dataset.id));
+    const wr = e.target.closest('[data-wallet]');
+    if (wr) { wFilter = wr.dataset.wallet; showTab('list'); }
+    const nw = e.target.closest('[data-new-wallet]');
+    if (nw) { e.preventDefault(); openEditor('wallet'); }
+    const ew = e.target.closest('[data-edit-wallet]');
+    if (ew) openEditor('wallet', db.wallets.find(w => w.id === ew.dataset.editWallet));
+    const nc = e.target.closest('[data-new-cat]');
+    if (nc) openEditor('cat', null, nc.dataset.newCat);
+    const ec = e.target.closest('[data-edit-cat]');
+    if (ec) { const c = db.cats.find(x => x.id === ec.dataset.editCat); openEditor('cat', c, c.type); }
   });
   $('#prevM').onclick = () => { cur.m--; if (cur.m < 0) { cur.m = 11; cur.y--; } render(); };
   $('#nextM').onclick = () => { cur.m++; if (cur.m > 11) { cur.m = 0; cur.y++; } render(); };
   $('#q').addEventListener('input', render);
+  $('#wFilter').addEventListener('change', e => { wFilter = e.target.value; render(); });
   $$('#typeFilter button').forEach(b => b.onclick = () => {
     filter = b.dataset.f;
     $$('#typeFilter button').forEach(x => x.classList.toggle('on', x === b));
@@ -693,35 +841,81 @@ nav.tabs .add {
   });
 
   // ---------- add / edit sheet ----------
-  let editing = null, fType = 'out', fCat = null;
+  let editing = null, fType = 'out', fCat = null, fWallet = null, fFrom = null, fTo = null;
   bindMoneyInput($('#fAmount'));
   bindMoneyInput($('#budgetInput'));
+  bindMoneyInput($('#eInit'));
 
-  function drawCats() {
+  const lastWallet = () => { try { return localStorage.getItem('moneysalsa.lastWallet'); } catch (e) { return null; } };
+  const defaultWallet = () => { const ws = walletList(), l = lastWallet(); return ws.some(w => w.id === l) ? l : ws[0] ? ws[0].id : null; };
+  const otherWallet = id => { const w = walletList().find(x => x.id !== id); return w ? w.id : null; };
+  const walletChips = sel => walletList().map(w =>
+    `<button type="button" data-w="${w.id}" class="${w.id === sel ? 'on' : ''}">${w.icon} ${esc(w.name)}</button>`).join('');
+
+  function drawSheet() {
     $$('#typeSeg button').forEach(b => b.classList.toggle('on', b.dataset.t === fType));
-    $('#fCats').innerHTML = CATS[fType].map(c =>
-      `<button type="button" data-c="${c[0]}" class="${c[0] === fCat ? 'on' : ''}"><span class="e">${c[1]}</span>${c[2]}</button>`).join('');
+    const tr = fType === 'tr', ws = walletList();
+    $('#fCatBox').classList.toggle('hidden', tr);
+    $('#fWalletBox').classList.toggle('hidden', tr);
+    $('#fTrBox').classList.toggle('hidden', !tr);
+    if (!tr) {
+      $('#fCats').innerHTML = catList(fType).map(c =>
+        `<button type="button" data-c="${c[0]}" class="${c[0] === fCat ? 'on' : ''}"><span class="e">${c[1]}</span>${esc(c[2])}</button>`).join('') +
+        `<button type="button" data-new-cat="${fType}"><span class="e">＋</span>Baru</button>`;
+      $('#fWalletLbl').textContent = fType === 'in' ? 'Masuk ke dompet' : 'Dibayar dari dompet';
+      $('#fWallets').innerHTML = ws.length ? walletChips(fWallet)
+        : `<span class="note">Belum ada dompet. <a href="#" data-new-wallet>+ Tambah dompet</a></span>`;
+    } else if (ws.length < 2) {
+      const msg = `<span class="note">Transfer butuh minimal 2 dompet. <a href="#" data-new-wallet>+ Tambah dompet</a></span>`;
+      $('#fFrom').innerHTML = ws.length ? walletChips(fFrom) : msg;
+      $('#fTo').innerHTML = ws.length ? msg : '';
+    } else {
+      $('#fFrom').innerHTML = walletChips(fFrom);
+      $('#fTo').innerHTML = walletChips(fTo);
+    }
   }
   $('#typeSeg').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
-    if (fType !== b.dataset.t) { fType = b.dataset.t; fCat = CATS[fType][0][0]; }
-    drawCats();
+    if (fType !== b.dataset.t) {
+      fType = b.dataset.t;
+      if (fType !== 'tr' && !catList(fType).some(c => c[0] === fCat)) fCat = CATS[fType][0][0];
+      if (fType === 'tr') {
+        fFrom = fFrom || fWallet || defaultWallet();
+        if (!fTo || fTo === fFrom) fTo = otherWallet(fFrom);
+      }
+    }
+    drawSheet();
   });
   $('#fCats').addEventListener('click', e => {
-    const b = e.target.closest('button'); if (!b) return;
-    fCat = b.dataset.c; drawCats();
+    const b = e.target.closest('button[data-c]'); if (!b) return;
+    fCat = b.dataset.c; drawSheet();
+  });
+  $('#fWallets').addEventListener('click', e => {
+    const b = e.target.closest('button[data-w]'); if (!b) return;
+    fWallet = fWallet === b.dataset.w ? null : b.dataset.w; drawSheet();
+  });
+  $('#fFrom').addEventListener('click', e => {
+    const b = e.target.closest('button[data-w]'); if (!b) return;
+    fFrom = b.dataset.w; if (fTo === fFrom) fTo = otherWallet(fFrom); drawSheet();
+  });
+  $('#fTo').addEventListener('click', e => {
+    const b = e.target.closest('button[data-w]'); if (!b) return;
+    fTo = b.dataset.w; if (fFrom === fTo) fFrom = otherWallet(fTo); drawSheet();
   });
 
   function openSheet(t) {
     editing = t || null;
     fType = t ? t.type : 'out';
-    fCat = t ? t.cat : CATS.out[0][0];
+    fCat = t && t.type !== 'tr' ? t.cat : CATS.out[0][0];
+    fWallet = t ? (t.type !== 'tr' ? t.wallet || null : t.wallet) : defaultWallet();
+    fFrom = t && t.type === 'tr' ? t.wallet : defaultWallet();
+    fTo = t && t.type === 'tr' ? t.to : otherWallet(fFrom);
     $('#fAmount').value = t ? t.amount.toLocaleString('id-ID') : '';
     const isThisMonth = cur.y === now.getFullYear() && cur.m === now.getMonth();
     $('#fDate').value = t ? t.date : (isThisMonth ? todayStr() : `${monthKey()}-01`);
     $('#fNote').value = t ? t.note || '' : '';
     $('#fDelete').classList.toggle('hidden', !t);
-    drawCats();
+    drawSheet();
     $('#overlay').classList.add('show');
     $('#sheet').classList.add('show');
     if (!t) setTimeout(() => $('#fAmount').focus(), 260);
@@ -736,7 +930,7 @@ nav.tabs .add {
   $('#fCancel').onclick = closeSheet;
   $('#fDelete').onclick = () => {
     if (!editing || !confirm('Hapus transaksi ini?')) return;
-    removeTx(editing.id);
+    removeDoc('tx', editing.id);
     closeSheet(); toast('Transaksi dihapus');
   };
   $('#sheet').addEventListener('submit', e => {
@@ -744,14 +938,101 @@ nav.tabs .add {
     const amount = digits($('#fAmount').value);
     if (!amount) { toast('Isi nominalnya dulu ya'); $('#fAmount').focus(); return; }
     const date = $('#fDate').value || todayStr();
-    const rec = { type: fType, cat: fCat, amount, date, note: $('#fNote').value.trim() };
+    const note = $('#fNote').value.trim();
+    let rec;
+    if (fType === 'tr') {
+      if (!fFrom || !fTo || fFrom === fTo) { toast('Pilih dompet asal & tujuan yang berbeda'); return; }
+      rec = { type: 'tr', amount, date, note, wallet: fFrom, to: fTo };
+    } else {
+      rec = { type: fType, cat: fCat, amount, date, note, wallet: fWallet || undefined };
+    }
+    const used = fType === 'tr' ? fFrom : fWallet;
+    if (used) try { localStorage.setItem('moneysalsa.lastWallet', used); } catch (e) {}
     const [y, m] = date.split('-').map(Number);
     cur = { y, m: m - 1 };
-    putTx(editing ? Object.assign({}, editing, rec, { updated: Date.now() })
-                  : Object.assign({ id: uid(), created: Date.now() }, rec));
+    putTx(Object.assign({ id: editing ? editing.id : uid(), created: editing ? editing.created : Date.now() }, rec,
+      editing ? { updated: Date.now() } : {}));
     closeSheet(); render();
     toast(editing ? 'Perubahan disimpan' : 'Tersimpan ✓');
   });
+
+  // ---------- dompet & kategori (editor) ----------
+  let eKind = null, eObj = null, eType = 'out', eIcon = null, eIconPicked = false;
+  // Tebak ikon dompet dari namanya (selama belum dipilih manual).
+  const guessWalletIcon = n => /cash|tunai|dompet|uang/i.test(n) ? '💵'
+    : /go ?pay|ovo|dana|shopee|linkaja|gopay|flip|jenius|e-?wallet|pay/i.test(n) ? '📱'
+    : /kartu|kredit|credit|card/i.test(n) ? '💳' : /tabung|celeng/i.test(n) ? '🐷' : '🏦';
+  $('#eName').addEventListener('input', () => {
+    if (eKind === 'wallet' && !eObj && !eIconPicked) { eIcon = guessWalletIcon($('#eName').value); drawIcons(); }
+  });
+  function drawIcons() {
+    const icons = eKind === 'wallet' ? WALLET_ICONS : CAT_ICONS;
+    const list = icons.includes(eIcon) ? icons : [eIcon].concat(icons);
+    $('#eIcons').innerHTML = list.map(i => `<button type="button" data-i="${i}" class="${i === eIcon ? 'on' : ''}">${i}</button>`).join('');
+  }
+  $('#eIcons').addEventListener('click', e => {
+    const b = e.target.closest('button[data-i]'); if (!b) return;
+    eIcon = b.dataset.i; eIconPicked = true; drawIcons();
+  });
+  function openEditor(kind, obj, type) {
+    eKind = kind; eObj = obj || null; eType = type || 'out'; eIconPicked = false;
+    const w = kind === 'wallet';
+    $('#eTitle').textContent = (obj ? 'Ubah ' : '') + (w ? (obj ? 'dompet' : 'Dompet baru')
+      : (obj ? 'kategori' : 'Kategori baru') + (eType === 'in' ? ' (pemasukan)' : ' (pengeluaran)'));
+    $('#eName').value = obj ? obj.name : '';
+    $('#eName').placeholder = w ? 'mis. BCA, GoPay, Cash' : 'mis. Kopi, Parkir, Arisan';
+    eIcon = obj ? obj.icon : (w ? WALLET_ICONS : CAT_ICONS)[w ? 2 : 0];
+    $('#eInitBox').classList.toggle('hidden', !w);
+    $('#eInit').value = w && obj && obj.initial ? obj.initial.toLocaleString('id-ID') : '';
+    $('#eDelete').classList.toggle('hidden', !obj);
+    drawIcons();
+    $('#overlay2').classList.add('show');
+    $('#editor').classList.add('show');
+    if (!obj) setTimeout(() => $('#eName').focus(), 260);
+  }
+  function closeEditor() {
+    $('#overlay2').classList.remove('show');
+    $('#editor').classList.remove('show');
+    document.activeElement && document.activeElement.blur();
+  }
+  $('#overlay2').onclick = closeEditor;
+  $('#eCancel').onclick = closeEditor;
+  $('#editor').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('#eName').value.trim();
+    if (!name) { toast('Isi namanya dulu ya'); $('#eName').focus(); return; }
+    const base = { id: eObj ? eObj.id : uid(), created: eObj ? eObj.created : Date.now(), name, icon: eIcon };
+    if (eObj) base.updated = Date.now();
+    const sheetOpen = $('#sheet').classList.contains('show');
+    if (eKind === 'wallet') {
+      putDoc('wallets', Object.assign(base, { initial: digits($('#eInit').value) }));
+      if (sheetOpen && !eObj) {
+        if (fType === 'tr') { if (!fFrom) fFrom = base.id; else if (!fTo) fTo = base.id; } else fWallet = base.id;
+      }
+    } else {
+      putDoc('cats', Object.assign(base, { type: eType }));
+      if (sheetOpen && !eObj && fType === eType) fCat = base.id;
+    }
+    closeEditor();
+    if (sheetOpen) drawSheet();
+    toast(eObj ? 'Perubahan disimpan' : 'Tersimpan ✓');
+  });
+  $('#eDelete').onclick = () => {
+    if (!eObj) return;
+    if (eKind === 'wallet') {
+      const n = db.tx.filter(t => t.wallet === eObj.id || t.to === eObj.id).length;
+      if (!confirm(`Hapus dompet "${eObj.name}"?` + (n ? `\n\n${n} transaksi yang memakai dompet ini tetap ada di riwayat, ` +
+        'tapi tidak lagi dihitung ke saldo dompet mana pun.' : ''))) return;
+      removeDoc('wallets', eObj.id);
+    } else {
+      const used = db.tx.filter(t => t.type === eObj.type && t.cat === eObj.id);
+      if (!confirm(`Hapus kategori "${eObj.name}"?` + (used.length ? `\n\n${used.length} transaksi dengan kategori ini ` +
+        'akan dipindah ke "Lainnya".' : ''))) return;
+      used.forEach(t => putTx(Object.assign({}, t, { cat: fallbackCat(t.type), updated: Date.now() })));
+      removeDoc('cats', eObj.id);
+    }
+    closeEditor(); toast('Dihapus');
+  };
 
   // ---------- settings ----------
   $('#saveBudget').onclick = () => {
@@ -773,15 +1054,18 @@ nav.tabs .add {
     return true;
   }
   $('#btnBackup').onclick = async () => {
-    const payload = JSON.stringify({ app: 'moneysalsa', version: 1, exported: new Date().toISOString(), tx: db.tx, budget: db.budget }, null, 1);
+    const payload = JSON.stringify({ app: 'moneysalsa', version: 2, exported: new Date().toISOString(),
+      tx: db.tx, wallets: db.wallets, cats: db.cats, budget: db.budget }, null, 1);
     if (await shareOrDownload(`moneysalsa-backup-${todayStr()}.json`, payload, 'application/json')) {
       markBackup(); render(); toast('Backup dibuat');
     }
   };
   $('#btnCsv').onclick = () => {
     const q = s => `"${String(s).replace(/"/g, '""')}"`;
-    const rows = [['Tanggal', 'Jenis', 'Kategori', 'Nominal', 'Catatan']].concat(
-      sortTx(db.tx).map(t => [t.date, t.type === 'in' ? 'Pemasukan' : 'Pengeluaran', catInfo(t.type, t.cat)[2], t.amount, t.note || '']));
+    const JENIS = { in: 'Pemasukan', out: 'Pengeluaran', tr: 'Transfer' };
+    const wn = id => { const w = walletInfo(id); return w ? w.name : ''; };
+    const rows = [['Tanggal', 'Jenis', 'Kategori', 'Dompet', 'Ke dompet', 'Nominal', 'Catatan']].concat(
+      sortTx(db.tx).map(t => [t.date, JENIS[t.type], catInfo(t.type, t.cat)[2], wn(t.wallet), wn(t.to), t.amount, t.note || '']));
     shareOrDownload(`moneysalsa-${todayStr()}.csv`, '﻿' + rows.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
   };
   $('#btnRestore').onclick = () => $('#fileIn').click();
@@ -791,22 +1075,29 @@ nav.tabs .add {
     try {
       const d = JSON.parse(await f.text());
       if (!d || !Array.isArray(d.tx)) throw new Error('format');
-      const valid = d.tx.filter(t => t && t.id && (t.type === 'in' || t.type === 'out') && t.amount > 0 && /^\d{4}-\d{2}-\d{2}$/.test(t.date));
-      const replace = db.tx.length && confirm(
-        `File berisi ${valid.length} transaksi.\n\nOK = GANTI semua data di HP ini dengan isi backup.\nBatal = GABUNGKAN (data di HP ini tetap, yang baru ditambahkan).`);
+      const next = {
+        tx: d.tx.filter(t => t && t.id && ['in', 'out', 'tr'].includes(t.type) && t.amount > 0 && /^\d{4}-\d{2}-\d{2}$/.test(t.date)),
+        wallets: (Array.isArray(d.wallets) ? d.wallets : []).filter(w => w && w.id && w.name),
+        cats: (Array.isArray(d.cats) ? d.cats : []).filter(c => c && c.id && c.name && (c.type === 'in' || c.type === 'out')),
+      };
+      const has = db.tx.length || db.wallets.length || db.cats.length;
+      const replace = has && confirm(
+        `File berisi ${next.tx.length} transaksi dan ${next.wallets.length} dompet.\n\nOK = GANTI semua data di HP ini dengan isi backup.\nBatal = GABUNGKAN (data di HP ini tetap, yang baru ditambahkan).`);
       let msg;
-      if (replace || !db.tx.length) {
-        replaceAll(valid);
-        msg = `Data dipulihkan (${valid.length} transaksi)`;
+      if (replace || !has) {
+        Object.keys(next).forEach(col => replaceAll(col, next[col]));
+        msg = `Data dipulihkan (${next.tx.length} transaksi)`;
       } else {
-        const byId = new Map(db.tx.map(t => [t.id, t]));
         let added = 0;
-        valid.forEach(t => {
-          const mine = byId.get(t.id);
-          if (!mine) { byId.set(t.id, t); added++; }
-          else if ((t.updated || t.created || 0) > (mine.updated || mine.created || 0)) byId.set(t.id, t);
+        Object.keys(next).forEach(col => {
+          const byId = new Map(db[col].map(t => [t.id, t]));
+          next[col].forEach(t => {
+            const mine = byId.get(t.id);
+            if (!mine) { byId.set(t.id, t); if (col === 'tx') added++; }
+            else if ((t.updated || t.created || 0) > (mine.updated || mine.created || 0)) byId.set(t.id, t);
+          });
+          replaceAll(col, Array.from(byId.values()));
         });
-        replaceAll(Array.from(byId.values()));
         msg = `Digabung: ${added} transaksi baru ditambahkan`;
       }
       if (d.budget && !db.budget) setBudget(d.budget);
@@ -818,7 +1109,7 @@ nav.tabs .add {
   $('#btnWipe').onclick = () => {
     if (!confirm('Yakin hapus SEMUA data? Tidak bisa dibatalkan.')) return;
     if (!confirm('Sekali lagi — sudah backup? Hapus semua?')) return;
-    replaceAll([]); setBudget(0); toast('Semua data dihapus');
+    Object.keys(COLS).forEach(col => replaceAll(col, [])); setBudget(0); toast('Semua data dihapus');
   };
 
   // ---------- install tip ----------
@@ -847,6 +1138,11 @@ nav.tabs .add {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    // Versi baru aktif → muat ulang sekali supaya langsung pakai file terbaru.
+    if (navigator.serviceWorker.controller) {
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
+    }
   }
 
   showTab('home');

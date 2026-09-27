@@ -4,10 +4,13 @@ Catatan keuangan pribadi yang simpel. Berbentuk **web app (PWA)**, jadi satu apl
 bisa dipasang di **Android** maupun **iPhone** — tanpa Play Store / App Store, dan tetap jalan offline.
 
 ## Fitur
-- Catat pemasukan & pengeluaran (nominal, kategori, tanggal, catatan)
+- Catat pemasukan & pengeluaran (nominal, kategori, dompet, tanggal, catatan)
+- **Dompet** (bank, e-wallet, cash — dibuat sendiri, dengan saldo awal) + saldo tiap dompet di Beranda
+- **Transfer antar dompet** (mis. tarik tunai BCA → Cash, top up GoPay) — tidak dihitung sebagai pengeluaran
+- **Kategori sendiri** selain kategori bawaan (ubah/hapus di menu Atur)
 - Ringkasan per bulan: sisa uang, total masuk, total keluar
 - Budget pengeluaran bulanan dengan progress bar
-- Riwayat dengan pencarian & filter, ketuk transaksi untuk edit/hapus
+- Riwayat dengan pencarian & filter (jenis & dompet), ketuk transaksi untuk edit/hapus
 - Laporan per kategori + rata-rata pengeluaran harian
 - Backup / pulihkan (file `.json`) untuk pindah data antar HP, dan export ke Excel (`.csv`)
 - **Sinkron otomatis Android ⇄ iPhone** (login sekali, Firebase gratis) — tetap bisa mencatat saat offline
