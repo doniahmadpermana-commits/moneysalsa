@@ -193,6 +193,26 @@ nav.tabs .add {
 .hidden { display: none !important; }
 .install-tip { background: var(--accent-soft); border-radius: 14px; padding: 12px 14px; font-size: 14px; margin: 12px 0; }
 .install-tip b { color: var(--accent); }
+.sync { font-size: 11px; color: var(--muted); display: block; font-weight: 500; letter-spacing: 0; margin-top: -2px; }
+.sync:empty { display: none; }
+
+/* login */
+.login {
+  position: fixed; inset: 0; z-index: 40; background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(24px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+}
+.login .box { width: 100%; max-width: 380px; }
+.login .logo { width: 72px; height: 72px; border-radius: 20px; display: block; margin: 0 auto 14px; box-shadow: var(--shadow); }
+.login h1 { text-align: center; font-size: 26px; margin: 0; letter-spacing: -.02em; }
+.login h1 span { color: var(--accent); }
+.login .sub { text-align: center; color: var(--muted); margin: 4px 0 22px; font-size: 14px; }
+.login .field { background: var(--card); margin-bottom: 10px; padding: 14px; }
+.login .btn { width: 100%; margin-top: 6px; }
+.login .btn[disabled] { opacity: .6; }
+.login .err { color: var(--out); font-size: 14px; min-height: 20px; margin: 4px 2px 6px; }
+.login .link { display: block; margin: 16px auto 0; border: 0; background: none; color: var(--accent); font-size: 14px; }
+.splash { display: grid; place-items: center; color: var(--muted); }
 .install-tip button { float: right; border: 0; background: none; color: var(--muted); font-size: 18px; margin: -4px -4px 0 6px; }
 </style>
 </head>
@@ -200,7 +220,7 @@ nav.tabs .add {
 
 <header class="top">
   <div class="wrap top-row">
-    <div class="brand">Money<span>Salsa</span></div>
+    <div class="brand">Money<span>Salsa</span><small class="sync" id="syncState"></small></div>
     <div class="month-nav">
       <button id="prevM" aria-label="Bulan sebelumnya">‹</button>
       <div class="label" id="monthLabel"></div>
@@ -271,9 +291,19 @@ nav.tabs .add {
       <button class="btn primary" id="saveBudget" style="width:100%;margin-top:10px">Simpan budget</button>
     </div>
 
-    <div class="card">
-      <b>Backup &amp; pindah HP</b>
+    <div class="card hidden" id="accountCard">
+      <b>Akun</b>
       <p class="note" style="margin:4px 0 6px">
+        ☁️ Tersinkron otomatis. Semua HP yang masuk dengan akun ini melihat data yang sama,
+        dan tetap bisa mencatat saat offline (dikirim begitu ada internet).
+      </p>
+      <div class="row" style="padding-top:6px"><span id="accEmail" style="word-break:break-all"></span>
+        <button class="btn ghost" id="btnLogout" style="flex:0 0 auto;padding:10px 14px">Keluar</button></div>
+    </div>
+
+    <div class="card">
+      <b id="backupTitle">Backup &amp; pindah HP</b>
+      <p class="note" style="margin:4px 0 6px" id="backupNote">
         Data tersimpan di HP ini saja. Untuk pindahin ke HP lain (Android ⇄ iPhone):
         tekan <b>Backup</b> di HP pertama → kirim file-nya (WA / email / Drive) ke HP kedua →
         buka app di HP kedua → <b>Pulihkan dari backup</b>.
@@ -325,7 +355,23 @@ nav.tabs .add {
 
 <div class="toast" id="toast"></div>
 
-<script>
+<div class="login splash hidden" id="splash">Memuat…</div>
+<form class="login hidden" id="login" autocomplete="on">
+  <div class="box">
+    <img class="logo" src="icons/icon-192.png" alt="">
+    <h1>Money<span>Salsa</span></h1>
+    <p class="sub">Masuk sekali, datanya ikut di semua HP-mu.</p>
+    <input class="field" type="email" id="lEmail" placeholder="Email" autocomplete="username" required>
+    <input class="field" type="password" id="lPass" placeholder="Password" autocomplete="current-password" required>
+    <div class="err" id="lErr"></div>
+    <button class="btn primary" type="submit" id="lBtn">Masuk</button>
+    <button class="link" type="button" id="lForgot">Lupa password?</button>
+  </div>
+</form>
+
+<script src="firebase-config.js"></script>
+
+<script type="module">
 (() => {
   const KEY = 'moneysalsa.v1';
   const CATS = {
@@ -355,6 +401,137 @@ nav.tabs .add {
     catch (e) { toast('Gagal menyimpan — memori HP penuh?'); }
   }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+  // ---------- sync (Firebase) ----------
+  // Tanpa konfigurasi Firebase, semua data tinggal di localStorage HP ini.
+  // Dengan konfigurasi, data ada di Firestore users/{uid}/tx/{id} + users/{uid}.budget,
+  // dan Firestore sendiri yang menyimpan cache offline + antrean tulis.
+  const CFG = window.FIREBASE_CONFIG;
+  const CLOUD = !!(CFG && CFG.apiKey && CFG.projectId);
+  let fb = null; // { auth, fs, user, m: modul-modul firebase }
+
+  const txRef = id => fb.m.fs.doc(fb.fs, 'users', fb.user.uid, 'tx', id);
+  const userRef = () => fb.m.fs.doc(fb.fs, 'users', fb.user.uid);
+  const cloudErr = e => { console.error(e); toast('Gagal sinkron: ' + (e.code || e.message)); };
+  const clean = t => { const o = {}; for (const k of ['id','type','cat','amount','date','note','created','updated']) if (t[k] !== undefined) o[k] = t[k]; return o; };
+
+  // Semua perubahan data lewat fungsi-fungsi ini.
+  // Mode cloud: tulis ke Firestore tanpa ditunggu (offline tetap jalan), layar
+  // diperbarui oleh listener onSnapshot. Mode lokal: ubah db + simpan.
+  function putTx(t) {
+    if (fb) return void fb.m.fs.setDoc(txRef(t.id), clean(t)).catch(cloudErr);
+    const i = db.tx.findIndex(x => x.id === t.id);
+    if (i >= 0) db.tx[i] = t; else db.tx.push(t);
+    save(); render();
+  }
+  function removeTx(id) {
+    if (fb) return void fb.m.fs.deleteDoc(txRef(id)).catch(cloudErr);
+    db.tx = db.tx.filter(t => t.id !== id); save(); render();
+  }
+  function setBudget(n) {
+    if (fb) return void fb.m.fs.setDoc(userRef(), { budget: n }, { merge: true }).catch(cloudErr);
+    db.budget = n; save(); render();
+  }
+  // Ganti seluruh daftar transaksi (dipakai untuk restore & hapus semua).
+  async function replaceAll(next) {
+    if (!fb) { db.tx = next; save(); render(); return; }
+    const keep = new Set(next.map(t => t.id));
+    const cur = new Map(db.tx.map(t => [t.id, t]));
+    const ops = db.tx.filter(t => !keep.has(t.id)).map(t => b => b.delete(txRef(t.id)))
+      .concat(next.filter(t => JSON.stringify(clean(t)) !== JSON.stringify(clean(cur.get(t.id) || {})))
+        .map(t => b => b.set(txRef(t.id), clean(t))));
+    for (let i = 0; i < ops.length; i += 400) {
+      const b = fb.m.fs.writeBatch(fb.fs);
+      ops.slice(i, i + 400).forEach(op => op(b));
+      b.commit().catch(cloudErr);
+    }
+  }
+
+  const lastBackup = () => { try { return +localStorage.getItem('moneysalsa.lastBackup') || db.lastBackup; } catch (e) { return db.lastBackup; } };
+  const markBackup = () => { try { localStorage.setItem('moneysalsa.lastBackup', Date.now()); } catch (e) {} };
+
+  function setSync(text) { $('#syncState').textContent = text; }
+
+  async function startCloud() {
+    $('#splash').classList.remove('hidden');
+    db.tx = []; db.budget = 0; render();
+    let m;
+    try {
+      const [app, auth, fs] = await Promise.all([
+        import('./vendor/firebase/firebase-app.js'),
+        import('./vendor/firebase/firebase-auth.js'),
+        import('./vendor/firebase/firebase-firestore.js'),
+      ]);
+      m = { app, auth, fs };
+    } catch (e) {
+      $('#splash').textContent = 'Gagal memuat. Cek koneksi internet lalu buka ulang aplikasinya.';
+      return;
+    }
+    const app = m.app.initializeApp(CFG);
+    const auth = m.auth.getAuth(app);
+    const fs = m.fs.initializeFirestore(app, {
+      localCache: m.fs.persistentLocalCache({ tabManager: m.fs.persistentMultipleTabManager() }),
+    });
+    if (window.__MONEYSALSA_EMULATOR__) { // hanya untuk pengujian lokal
+      m.auth.connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+      m.fs.connectFirestoreEmulator(fs, '127.0.0.1', 8080);
+    }
+    let unsubs = [];
+    m.auth.onAuthStateChanged(auth, user => {
+      unsubs.forEach(u => u()); unsubs = [];
+      $('#splash').classList.add('hidden');
+      if (!user) {
+        fb = null; db.tx = []; db.budget = 0; setSync('');
+        $('#login').classList.remove('hidden');
+        render();
+        return;
+      }
+      fb = { auth, fs, user, m };
+      $('#login').classList.add('hidden');
+      $('#accEmail').textContent = user.email || '';
+      // Data yang dicatat sebelum sinkron diaktifkan ikut diunggah sekali.
+      const local = load();
+      if (local.tx.length) {
+        local.tx.forEach(putTx);
+        if (local.budget) setBudget(local.budget);
+        try { localStorage.setItem(KEY, JSON.stringify({ tx: [], budget: 0, lastBackup: local.lastBackup })); } catch (e) {}
+      }
+      db.tx = []; db.budget = 0;
+      unsubs.push(m.fs.onSnapshot(m.fs.collection(fs, 'users', user.uid, 'tx'), { includeMetadataChanges: true }, snap => {
+        db.tx = snap.docs.map(d => d.data());
+        setSync(snap.metadata.hasPendingWrites ? '⏳ menyinkronkan…' : snap.metadata.fromCache ? '📴 offline' : '');
+        render();
+      }, cloudErr));
+      unsubs.push(m.fs.onSnapshot(userRef(), snap => {
+        db.budget = (snap.exists() && snap.data().budget) || 0;
+        render();
+      }, cloudErr));
+      render();
+    });
+
+    const errMsg = e => ({
+      'auth/invalid-credential': 'Email atau password salah.',
+      'auth/wrong-password': 'Email atau password salah.',
+      'auth/user-not-found': 'Akun belum terdaftar.',
+      'auth/invalid-email': 'Format email tidak valid.',
+      'auth/too-many-requests': 'Terlalu banyak percobaan. Coba lagi sebentar lagi.',
+      'auth/network-request-failed': 'Tidak ada koneksi internet.',
+    }[e.code] || 'Gagal masuk (' + (e.code || e.message) + ')');
+    $('#login').addEventListener('submit', async e => {
+      e.preventDefault();
+      $('#lErr').textContent = ''; $('#lBtn').disabled = true; $('#lBtn').textContent = 'Masuk…';
+      try { await m.auth.signInWithEmailAndPassword(auth, $('#lEmail').value.trim(), $('#lPass').value); }
+      catch (err) { $('#lErr').textContent = errMsg(err); }
+      $('#lBtn').disabled = false; $('#lBtn').textContent = 'Masuk';
+    });
+    $('#lForgot').onclick = async () => {
+      const email = $('#lEmail').value.trim();
+      if (!email) { $('#lErr').textContent = 'Isi email dulu, lalu tekan "Lupa password?" lagi.'; return; }
+      try { await m.auth.sendPasswordResetEmail(auth, email); $('#lErr').textContent = ''; toast('Link reset password dikirim ke email'); }
+      catch (err) { $('#lErr').textContent = errMsg(err); }
+    };
+    $('#btnLogout').onclick = () => { if (confirm('Keluar dari akun di HP ini?')) m.auth.signOut(auth); };
+  }
 
   // ---------- helpers ----------
   const $ = s => document.querySelector(s);
@@ -481,9 +658,14 @@ nav.tabs .add {
     }
 
     if (tab === 'settings') {
+      $('#accountCard').classList.toggle('hidden', !fb);
+      if (fb) {
+        $('#backupTitle').textContent = 'Backup & export';
+        $('#backupNote').textContent = 'Data sudah otomatis aman di cloud. Backup file ini hanya untuk jaga-jaga atau arsip.';
+      }
       $('#budgetInput').value = db.budget ? db.budget.toLocaleString('id-ID') : '';
-      $('#lastBackup').textContent = db.lastBackup
-        ? `Backup terakhir: ${new Date(db.lastBackup).toLocaleString('id-ID')}` : 'Belum pernah backup.';
+      const lb = lastBackup();
+      $('#lastBackup').textContent = lb ? `Backup terakhir di HP ini: ${new Date(lb).toLocaleString('id-ID')}` : 'Belum pernah backup dari HP ini.';
     }
   }
 
@@ -554,8 +736,8 @@ nav.tabs .add {
   $('#fCancel').onclick = closeSheet;
   $('#fDelete').onclick = () => {
     if (!editing || !confirm('Hapus transaksi ini?')) return;
-    db.tx = db.tx.filter(t => t.id !== editing.id);
-    save(); closeSheet(); render(); toast('Transaksi dihapus');
+    removeTx(editing.id);
+    closeSheet(); toast('Transaksi dihapus');
   };
   $('#sheet').addEventListener('submit', e => {
     e.preventDefault();
@@ -563,19 +745,18 @@ nav.tabs .add {
     if (!amount) { toast('Isi nominalnya dulu ya'); $('#fAmount').focus(); return; }
     const date = $('#fDate').value || todayStr();
     const rec = { type: fType, cat: fCat, amount, date, note: $('#fNote').value.trim() };
-    if (editing) Object.assign(editing, rec, { updated: Date.now() });
-    else db.tx.push(Object.assign({ id: uid(), created: Date.now() }, rec));
-    save();
     const [y, m] = date.split('-').map(Number);
     cur = { y, m: m - 1 };
+    putTx(editing ? Object.assign({}, editing, rec, { updated: Date.now() })
+                  : Object.assign({ id: uid(), created: Date.now() }, rec));
     closeSheet(); render();
     toast(editing ? 'Perubahan disimpan' : 'Tersimpan ✓');
   });
 
   // ---------- settings ----------
   $('#saveBudget').onclick = () => {
-    db.budget = digits($('#budgetInput').value);
-    save(); toast(db.budget ? 'Budget disimpan' : 'Budget dimatikan');
+    const n = digits($('#budgetInput').value);
+    setBudget(n); toast(n ? 'Budget disimpan' : 'Budget dimatikan');
   };
 
   async function shareOrDownload(filename, text, mime) {
@@ -594,7 +775,7 @@ nav.tabs .add {
   $('#btnBackup').onclick = async () => {
     const payload = JSON.stringify({ app: 'moneysalsa', version: 1, exported: new Date().toISOString(), tx: db.tx, budget: db.budget }, null, 1);
     if (await shareOrDownload(`moneysalsa-backup-${todayStr()}.json`, payload, 'application/json')) {
-      db.lastBackup = Date.now(); save(); render(); toast('Backup dibuat');
+      markBackup(); render(); toast('Backup dibuat');
     }
   };
   $('#btnCsv').onclick = () => {
@@ -615,7 +796,7 @@ nav.tabs .add {
         `File berisi ${valid.length} transaksi.\n\nOK = GANTI semua data di HP ini dengan isi backup.\nBatal = GABUNGKAN (data di HP ini tetap, yang baru ditambahkan).`);
       let msg;
       if (replace || !db.tx.length) {
-        db.tx = valid;
+        replaceAll(valid);
         msg = `Data dipulihkan (${valid.length} transaksi)`;
       } else {
         const byId = new Map(db.tx.map(t => [t.id, t]));
@@ -625,11 +806,11 @@ nav.tabs .add {
           if (!mine) { byId.set(t.id, t); added++; }
           else if ((t.updated || t.created || 0) > (mine.updated || mine.created || 0)) byId.set(t.id, t);
         });
-        db.tx = Array.from(byId.values());
+        replaceAll(Array.from(byId.values()));
         msg = `Digabung: ${added} transaksi baru ditambahkan`;
       }
-      if (d.budget && !db.budget) db.budget = d.budget;
-      save(); render(); toast(msg);
+      if (d.budget && !db.budget) setBudget(d.budget);
+      toast(msg);
     } catch (err) {
       toast('File backup tidak valid');
     }
@@ -637,7 +818,7 @@ nav.tabs .add {
   $('#btnWipe').onclick = () => {
     if (!confirm('Yakin hapus SEMUA data? Tidak bisa dibatalkan.')) return;
     if (!confirm('Sekali lagi — sudah backup? Hapus semua?')) return;
-    db = { tx: [], budget: 0, lastBackup: null }; save(); render(); toast('Semua data dihapus');
+    replaceAll([]); setBudget(0); toast('Semua data dihapus');
   };
 
   // ---------- install tip ----------
@@ -669,6 +850,7 @@ nav.tabs .add {
   }
 
   showTab('home');
+  if (CLOUD) startCloud();
 })();
 </script>
 </body>

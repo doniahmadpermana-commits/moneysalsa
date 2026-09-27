@@ -2,7 +2,7 @@ name: Deploy ke GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/ecstatic-mccarthy-nz8a88]
   workflow_dispatch:
 
 permissions:

@@ -10,25 +10,51 @@ bisa dipasang di **Android** maupun **iPhone** — tanpa Play Store / App Store,
 - Riwayat dengan pencarian & filter, ketuk transaksi untuk edit/hapus
 - Laporan per kategori + rata-rata pengeluaran harian
 - Backup / pulihkan (file `.json`) untuk pindah data antar HP, dan export ke Excel (`.csv`)
-- Mode gelap otomatis, bisa dipakai offline
+- **Sinkron otomatis Android ⇄ iPhone** (login sekali, Firebase gratis) — tetap bisa mencatat saat offline
+- Mode gelap otomatis
 
-## Online-kan (sekali saja)
-1. Merge branch ini ke `main`.
-2. Di GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. Tunggu workflow *Deploy ke GitHub Pages* selesai. Alamatnya:
-   `https://<username>.github.io/moneysalsa/`
+## Setup (sekali saja, semuanya gratis)
 
-## Pasang di HP
+### 1. Online-kan website (GitHub Pages)
+1. Di GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+2. Buka tab **Actions** → *Deploy ke GitHub Pages* → **Run workflow** (atau push apa saja).
+3. Alamatnya: `https://doniahmadpermana-commits.github.io/moneysalsa/`
+
+### 2. Aktifkan sinkron Android ⇄ iPhone (Firebase, gratis tanpa kartu kredit)
+1. Buka <https://console.firebase.google.com> → **Create a project** (nama bebas, Google Analytics boleh dimatikan).
+2. **Build → Authentication → Get started → Sign-in method → Email/Password → Enable → Save.**
+3. **Authentication → Users → Add user** → isi email & password untuk dia. (Akun hanya dibuat dari sini, jadi orang lain tidak bisa daftar sendiri.)
+4. **Authentication → Settings → Authorized domains → Add domain** → `doniahmadpermana-commits.github.io`.
+5. **Build → Firestore Database → Create database** → lokasi `asia-southeast2 (Jakarta)` → *Start in production mode*.
+6. Di Firestore → tab **Rules** → hapus isinya, tempel isi file [`firestore.rules`](firestore.rules) → **Publish**.
+7. **Project settings (⚙️) → General → Your apps → ikon `</>` (Web)** → daftarkan app (tanpa Hosting) →
+   salin objek `firebaseConfig`, lalu tempel ke file [`firebase-config.js`](firebase-config.js):
+   ```js
+   window.FIREBASE_CONFIG = { apiKey: "...", authDomain: "...", projectId: "...", storageBucket: "...", messagingSenderId: "...", appId: "..." };
+   ```
+   Commit → website otomatis ter-update dalam ±1 menit.
+
+> Konfigurasi Firebase memang boleh terlihat publik; yang menjaga data adalah `firestore.rules`
+> (setiap akun hanya bisa membaca datanya sendiri).
+
+## Pasang di HP (di kedua HP)
 - **Android (Chrome):** buka alamatnya → menu ⋮ → **Install app / Tambahkan ke layar utama**.
 - **iPhone (Safari):** buka alamatnya → tombol **Share** ⬆ → **Add to Home Screen**.
 
-## Tentang data & 2 HP
-Data disimpan **di masing-masing HP** (tidak dikirim ke server mana pun), jadi privat.
-Konsekuensinya, Android dan iPhone tidak sinkron otomatis. Untuk menyamakan:
-**Atur → Backup data** di HP A → kirim file-nya ke HP B (WA/email/Drive) →
-di HP B **Atur → Pulihkan / gabung dari backup**. Pilih *gabungkan* supaya data di kedua HP digabung.
+Lalu buka dari ikon di layar utama dan **login sekali** dengan akun tadi. Setelah itu dia tinggal
+buka & catat — dari HP mana pun, datanya sama. Tanpa internet pun tetap bisa mencatat; data
+dikirim otomatis begitu online lagi.
 
-Tips: sebaiknya pakai satu HP sebagai "HP utama" untuk mencatat, dan rutin backup.
+Tanpa langkah 2, aplikasi tetap jalan tapi data hanya di HP masing-masing (bisa dipindah lewat
+**Atur → Backup / Pulihkan**).
 
-## Update aplikasi
-Kalau mengubah file, naikkan versi `CACHE` di `sw.js` supaya HP mengambil versi terbaru.
+## Biaya
+- GitHub Pages: gratis untuk repo publik.
+- Firebase paket Spark: gratis (50.000 baca & 20.000 tulis per hari, 1 GB data) — jauh di atas
+  kebutuhan catatan keuangan pribadi.
+
+## Untuk developer
+- Kalau mengubah file, naikkan versi `CACHE` di `sw.js` supaya HP mengambil versi terbaru.
+- SDK Firebase (v12.19.0) disimpan di `vendor/firebase/` supaya bisa di-cache untuk offline.
+- Uji lokal dengan emulator: `firebase emulators:start --project demo-moneysalsa` lalu set
+  `window.__MONEYSALSA_EMULATOR__ = true` sebelum aplikasi dimuat.

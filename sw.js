@@ -1,6 +1,10 @@
 // Naikkan versi ini setiap kali file aplikasi diubah supaya HP mengambil versi baru.
-const CACHE = 'moneysalsa-v1';
-const ASSETS = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'moneysalsa-v2';
+const ASSETS = [
+  './', 'index.html', 'manifest.webmanifest', 'firebase-config.js',
+  'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
+  'vendor/firebase/firebase-app.js', 'vendor/firebase/firebase-auth.js', 'vendor/firebase/firebase-firestore.js',
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -14,7 +18,8 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Network-first untuk halaman (supaya update cepat masuk), cache-first untuk aset lain.
+// Halaman: network-first (update cepat masuk). Aset lain: langsung dari cache
+// lalu diperbarui di belakang layar (stale-while-revalidate).
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
@@ -26,5 +31,10 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
-  e.respondWith(caches.match(req).then(hit => hit || fetch(req)));
+  e.respondWith(caches.open(CACHE).then(async c => {
+    const hit = await c.match(req, { ignoreSearch: true });
+    const net = fetch(req).then(res => { if (res.ok) c.put(req, res.clone()); return res; });
+    if (hit) { e.waitUntil(net.catch(() => {})); return hit; }
+    return net;
+  }));
 });
